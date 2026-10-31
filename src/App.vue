@@ -106,6 +106,19 @@
             <Settings class="w-3.5 h-3.5" />
           </button>
 
+          <!-- Pin Window Toggle (Stays open when clicking Finder / other apps) -->
+          <button 
+            @click="togglePin"
+            :title="isPinned ? 'Window Pinned: Stays open while in Finder (Click to unpin)' : 'Window Unpinned: Closes on blur (Click to pin)'"
+            class="p-1 rounded-md transition-colors border"
+            :class="isPinned 
+              ? (isDarkMode ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-blue-50 text-blue-600 border-blue-200') 
+              : (isDarkMode ? 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 border-white/[0.08]' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-500 border-zinc-200')"
+          >
+            <Pin v-if="isPinned" class="w-3.5 h-3.5 fill-current" />
+            <PinOff v-else class="w-3.5 h-3.5" />
+          </button>
+
           <!-- Refresh -->
           <button 
             @click="refreshDiskStats" 
@@ -116,6 +129,18 @@
               : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-200'"
           >
             <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isRefreshing }" />
+          </button>
+
+          <!-- Close / Hide Window -->
+          <button 
+            @click="hidePopover" 
+            title="Close Popover (or click Menu Bar icon)"
+            class="p-1 rounded-md transition-colors border"
+            :class="isDarkMode 
+              ? 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 border-white/[0.08]' 
+              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-500 border-zinc-200'"
+          >
+            <X class="w-3.5 h-3.5" />
           </button>
 
           <!-- Quit -->
@@ -827,10 +852,34 @@ import {
   Settings,
   Sun,
   Moon,
-  RotateCcw
+  RotateCcw,
+  Pin,
+  PinOff,
+  X
 } from 'lucide-vue-next';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+
+// Window Pinning (true = stays open when interacting with Finder / apps; false = auto-dismisses on blur)
+const isPinned = ref(localStorage.getItem('offload_pinned') !== 'false');
+
+async function togglePin() {
+  isPinned.value = !isPinned.value;
+  localStorage.setItem('offload_pinned', isPinned.value.toString());
+  try {
+    await invoke('set_pinned', { pinned: isPinned.value });
+  } catch (err) {
+    console.error('Failed to set pinned state:', err);
+  }
+}
+
+async function hidePopover() {
+  try {
+    await invoke('hide_window');
+  } catch (err) {
+    console.error('Failed to hide window:', err);
+  }
+}
 
 // View State: 'offload' | 'active' | 'settings' | 'permissions'
 const activeView = ref('offload');
@@ -1003,9 +1052,7 @@ function onVolumeChange() {
 
 async function browseCustomVolume() {
   try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
+    const selected = await invoke('pick_folder', {
       title: 'Select Destination Drive or Folder'
     });
     if (selected) {
@@ -1018,29 +1065,28 @@ async function browseCustomVolume() {
       refreshDiskStats();
     }
   } catch (err) {
-    console.error(err);
+    console.error('Browse custom volume error:', err);
   }
 }
 
 async function selectFolderDialog() {
   try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
+    const selected = await invoke('pick_folder', {
       title: 'Choose Folder to Offload to External Drive'
     });
     if (selected) {
       handleFolderSelection(selected);
     }
   } catch (err) {
-    console.error('File dialog error:', err);
+    console.error('Select folder error:', err);
   }
 }
 
 function handleFolderDrop(e) {
   isDragging.value = false;
-  const files = e.dataTransfer.files;
-  if (files && files.length > 0) {
+  // Fallback for HTML5 file drop if paths are available
+  const files = e.dataTransfer?.files;
+  if (files && files.length > 0 && files[0].path) {
     handleFolderSelection(files[0].path);
   }
 }
@@ -1164,6 +1210,33 @@ async function quitApplication() {
 
 onMounted(async () => {
   applyTheme();
+
+  // Sync initial pin state with backend
+  try {
+    await invoke('set_pinned', { pinned: isPinned.value });
+  } catch (err) {
+    console.warn('Set initial pinned warning:', err);
+  }
+
+  // Register native macOS drag and drop listener via Tauri Webview
+  try {
+    await getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === 'over' || event.payload.type === 'enter') {
+        isDragging.value = true;
+      } else if (event.payload.type === 'drop') {
+        isDragging.value = false;
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          handleFolderSelection(paths[0]);
+        }
+      } else {
+        isDragging.value = false;
+      }
+    });
+  } catch (err) {
+    console.warn('DragDrop listener registration warning:', err);
+  }
+
   await checkSystemPermissions();
   if (!permissions.value.all_granted) {
     activeView.value = 'permissions';

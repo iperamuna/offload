@@ -1,11 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
+use tauri_plugin_dialog::{DialogExt, FilePath};
+
+pub struct WindowControlState {
+    pub is_dialog_open: AtomicBool,
+    pub is_pinned: AtomicBool,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DiskInfo {
@@ -437,87 +445,156 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+// 11. Window Pin & Dialog Controls
+#[tauri::command]
+fn set_pinned(state: tauri::State<'_, Arc<WindowControlState>>, pinned: bool) {
+    state.is_pinned.store(pinned, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn get_pinned(state: tauri::State<'_, Arc<WindowControlState>>) -> bool {
+    state.is_pinned.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
+#[tauri::command]
+async fn pick_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<WindowControlState>>,
+    title: Option<String>,
+    default_path: Option<String>,
+) -> Result<Option<String>, String> {
+    state.is_dialog_open.store(true, Ordering::SeqCst);
+
+    let app_clone = app.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let mut builder = app_clone.dialog().file();
+        if let Some(t) = title {
+            builder = builder.set_title(t);
+        }
+        if let Some(dp) = default_path {
+            builder = builder.set_directory(std::path::PathBuf::from(dp));
+        }
+        builder.blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    state.is_dialog_open.store(false, Ordering::SeqCst);
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
+    let selected_path = match res {
+        Some(FilePath::Path(p)) => Some(p.to_string_lossy().to_string()),
+        Some(FilePath::Url(u)) => u.to_file_path().ok().map(|p| p.to_string_lossy().to_string()),
+        None => None,
+    };
+
+    Ok(selected_path)
+}
+
 pub fn run() {
+    let window_ctrl = Arc::new(WindowControlState {
+        is_dialog_open: AtomicBool::new(false),
+        is_pinned: AtomicBool::new(true), // Default to pinned so popover stays open while user interacts with Finder!
+    });
+
     tauri::Builder::default()
+        .manage(window_ctrl.clone())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .setup(|app| {
-            // Set macOS accessory policy (Hides from Dock, pure Menu Bar app)
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        .setup({
+            let window_ctrl = window_ctrl.clone();
+            move |app| {
+                // Set macOS accessory policy (Hides from Dock, pure Menu Bar app)
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Context Menu for right click on Tray icon
-            let show_item = MenuItem::with_id(app, "show", "Open Offload Popover", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit Offload", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+                // Context Menu for right click on Tray icon
+                let show_item = MenuItem::with_id(app, "show", "Open Offload Popover", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "Quit Offload", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            // Build Tray Icon
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .tooltip("Offload - macOS Space Manager")
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "quit" => {
-                            app.exit(0);
+                // Build Tray Icon
+                let _tray = TrayIconBuilder::new()
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .tooltip("Offload - macOS Space Manager")
+                    .on_menu_event(|app, event| {
+                        match event.id.as_ref() {
+                            "quit" => {
+                                app.exit(0);
+                            }
+                            "show" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            _ => {}
                         }
-                        "show" => {
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            rect,
+                            ..
+                        } = event {
+                            let app = tray.app_handle();
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                if window.is_visible().unwrap_or(false) {
+                                    let _ = window.hide();
+                                } else {
+                                    let (pos_x, pos_y, width, height) = match (rect.position, rect.size) {
+                                        (tauri::Position::Physical(p), tauri::Size::Physical(s)) => (p.x, p.y, s.width as i32, s.height as i32),
+                                        (tauri::Position::Logical(l), tauri::Size::Logical(s)) => (l.x as i32, l.y as i32, s.width as i32, s.height as i32),
+                                        _ => (900, 25, 28, 22),
+                                    };
+                                    let popover_width = 380;
+                                    let x = (pos_x + (width / 2)) - (popover_width / 2);
+                                    let y = pos_y + height + 2;
+                                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
                             }
                         }
-                        _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        rect,
-                        ..
-                    } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let (pos_x, pos_y, width, height) = match (rect.position, rect.size) {
-                                    (tauri::Position::Physical(p), tauri::Size::Physical(s)) => (p.x, p.y, s.width as i32, s.height as i32),
-                                    (tauri::Position::Logical(l), tauri::Size::Logical(s)) => (l.x as i32, l.y as i32, s.width as i32, s.height as i32),
-                                    _ => (900, 25, 28, 22),
-                                };
-                                let popover_width = 380;
-                                let x = (pos_x + (width / 2)) - (popover_width / 2);
-                                let y = pos_y + height + 2;
-                                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                    }
-                })
-                .build(app)?;
+                    })
+                    .build(app)?;
 
-            // Window Event Handling: Hide on blur or close
-            if let Some(window) = app.get_webview_window("main") {
-                let w = window.clone();
-                window.on_window_event(move |event| {
-                    match event {
-                        tauri::WindowEvent::CloseRequested { api, .. } => {
-                            api.prevent_close();
-                            let _ = w.hide();
+                // Window Event Handling: Hide on blur (if unpinned and not in dialog) or close
+                if let Some(window) = app.get_webview_window("main") {
+                    let w = window.clone();
+                    let ctrl = window_ctrl.clone();
+                    window.on_window_event(move |event| {
+                        match event {
+                            tauri::WindowEvent::CloseRequested { api, .. } => {
+                                api.prevent_close();
+                                let _ = w.hide();
+                            }
+                            tauri::WindowEvent::Focused(false) => {
+                                if !ctrl.is_dialog_open.load(Ordering::SeqCst)
+                                    && !ctrl.is_pinned.load(Ordering::SeqCst)
+                                {
+                                    let _ = w.hide();
+                                }
+                            }
+                            _ => {}
                         }
-                        tauri::WindowEvent::Focused(false) => {
-                            let _ = w.hide();
-                        }
-                        _ => {}
-                    }
-                });
+                    });
+                }
+
+                Ok(())
             }
-
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             check_permissions,
@@ -529,7 +606,11 @@ pub fn run() {
             offload_folder,
             reverse_folder,
             open_in_finder,
-            quit_app
+            quit_app,
+            set_pinned,
+            get_pinned,
+            hide_window,
+            pick_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
