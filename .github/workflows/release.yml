@@ -119,14 +119,16 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
-            VERSION="1.1.0"
+            VERSION="1.1.1"
           fi
-          if [ -f "RELEASE_NOTES_v${VERSION}.md" ]; then
+          if [ -f "Docs/release-notes/RELEASE_NOTES_v${VERSION}.md" ]; then
+            echo "path=Docs/release-notes/RELEASE_NOTES_v${VERSION}.md" >> $GITHUB_OUTPUT
+          elif [ -f "RELEASE_NOTES_v${VERSION}.md" ]; then
             echo "path=RELEASE_NOTES_v${VERSION}.md" >> $GITHUB_OUTPUT
           elif [ -f "RELEASE_NOTES.md" ]; then
             echo "path=RELEASE_NOTES.md" >> $GITHUB_OUTPUT
           else
-            echo "path=RELEASE_NOTES_v1.0.0.md" >> $GITHUB_OUTPUT
+            echo "path=Docs/release-notes/RELEASE_NOTES_v1.0.0.md" >> $GITHUB_OUTPUT
           fi
 
       - name: Create GitHub Draft Release
