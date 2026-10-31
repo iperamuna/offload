@@ -349,6 +349,31 @@ fn list_offloaded_items(target_mount: Option<String>) -> Result<Vec<SymlinkItem>
     Ok(results)
 }
 
+fn get_or_install_offload_script() -> Result<String, String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/indunilperamuna".into());
+    let bin_dir = format!("{home}/.local/bin");
+    let script_path = format!("{bin_dir}/offload");
+
+    // Automatically ensure script exists and is up to date
+    let embedded = include_str!("../scripts/offload.sh");
+    let should_write = match std::fs::read_to_string(&script_path) {
+        Ok(existing) => existing != embedded,
+        Err(_) => true,
+    };
+
+    if should_write {
+        let _ = std::fs::create_dir_all(&bin_dir);
+        let _ = std::fs::write(&script_path, embedded);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    Ok(script_path)
+}
+
 // 7. Execute Offload command
 #[tauri::command]
 fn offload_folder(
@@ -356,10 +381,7 @@ fn offload_folder(
     except_list: String,
     dest_base: Option<String>,
 ) -> Result<String, String> {
-    let script_path = format!(
-        "{}/.local/bin/offload",
-        std::env::var("HOME").unwrap_or_else(|_| "/Users/indunilperamuna".into())
-    );
+    let script_path = get_or_install_offload_script()?;
 
     let mut cmd = Command::new(&script_path);
     cmd.arg(&path);
@@ -400,10 +422,7 @@ fn offload_folder(
 // 8. Execute Reverse command
 #[tauri::command]
 fn reverse_folder(path: String) -> Result<String, String> {
-    let script_path = format!(
-        "{}/.local/bin/offload",
-        std::env::var("HOME").unwrap_or_else(|_| "/Users/indunilperamuna".into())
-    );
+    let script_path = get_or_install_offload_script()?;
 
     let mut child = Command::new(&script_path)
         .args([&path, "--reverse"])

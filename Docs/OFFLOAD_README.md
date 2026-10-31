@@ -478,6 +478,8 @@ fi
 # Safely swap original folder with symlink on internal SSD
 echo -e "[*] Finalizing swap on internal SSD to reclaim space..."
 
+# Clear any macOS ACLs (e.g. deny delete on Downloads/Desktop/Documents), immutable flags (uchg), and purge .DS_Store
+chmod -h -N "${TARGET_DIR}" 2>/dev/null || true
 chflags -R nouchg "${TARGET_DIR}" 2>/dev/null || true
 find "${TARGET_DIR}" -name ".DS_Store" -delete 2>/dev/null || true
 
@@ -486,12 +488,15 @@ TRASH_TMP="${TARGET_DIR}.offload_trash.$$"
 if mv "${TARGET_DIR}" "${TRASH_TMP}" 2>/dev/null; then
     echo -e "[*] Creating symbolic link pointing to external disc..."
     ln -s "${DEST_DIR}" "${TARGET_DIR}"
+    chmod -R -N "${TRASH_TMP}" 2>/dev/null || true
     chflags -R nouchg "${TRASH_TMP}" 2>/dev/null || true
     find "${TRASH_TMP}" -name ".DS_Store" -delete 2>/dev/null || true
     rm -rf "${TRASH_TMP}" 2>/dev/null || true
 else
+    chmod -R -N "${TARGET_DIR}" 2>/dev/null || true
+    chflags -R nouchg "${TARGET_DIR}" 2>/dev/null || true
     find "${TARGET_DIR}" -name ".DS_Store" -delete 2>/dev/null || true
-    rm -rf "${TARGET_DIR}"
+    rm -rf "${TARGET_DIR}" 2>/dev/null || true
     echo -e "[*] Creating symbolic link pointing to external disc..."
     ln -s "${DEST_DIR}" "${TARGET_DIR}"
 fi
