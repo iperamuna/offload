@@ -60,7 +60,7 @@
                 ? 'bg-zinc-800/80 text-zinc-300 border-white/10' 
                 : 'bg-zinc-100 text-zinc-600 border-zinc-200'"
             >
-              v1.0
+              v{{ appVersion }}
             </span>
           </div>
         </div>
@@ -912,6 +912,10 @@ import {
 } from 'lucide-vue-next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getVersion } from '@tauri-apps/api/app';
+
+// App version
+const appVersion = ref('1.1.1');
 
 // Window Pinning (true = stays open when interacting with Finder / apps; false = auto-dismisses on blur)
 const isPinned = ref(localStorage.getItem('offload_pinned') !== 'false');
@@ -1286,6 +1290,13 @@ async function quitApplication() {
 
 onMounted(async () => {
   applyTheme();
+
+  try {
+    const v = await getVersion();
+    if (v) appVersion.value = v;
+  } catch (err) {
+    console.warn('Failed to get dynamic app version:', err);
+  }
 
   // Sync initial pin state with backend
   try {

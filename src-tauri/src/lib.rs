@@ -511,6 +511,48 @@ fn relink_symlink(local_path: String, destination: String) -> Result<(), String>
     std::os::unix::fs::symlink(dest_p, local_p)
         .map_err(|e| format!("Failed to create symbolic link: {e}"))?;
 
+    // Refresh Dock bookmark if needed (e.g. ~/Downloads)
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("python3")
+            .arg("-c")
+            .arg(r#"
+import plistlib, os, subprocess, sys
+
+target = sys.argv[1]
+try:
+    cmd = f'''swift -e '
+import Foundation
+let path = NSString(string: "{target}").expandingTildeInPath
+let url = URL(fileURLWithPath: path)
+let b = try! url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+FileHandle.standardOutput.write(b)
+' '''
+    proc = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    if proc.returncode == 0 and len(proc.stdout) > 50:
+        dock_plist = os.path.expanduser('~/Library/Preferences/com.apple.dock.plist')
+        with open(dock_plist, 'rb') as fp:
+            pl = plistlib.load(fp)
+        updated = False
+        target_norm = os.path.normpath(os.path.expanduser(target))
+        for item in pl.get('persistent-others', []):
+            td = item.get('tile-data', {})
+            raw_url = td.get('file-data', {}).get('_CFURLString', '')
+            tile_path = raw_url.replace('file://', '')
+            if os.path.normpath(tile_path) == target_norm or td.get('file-label') == os.path.basename(target_norm):
+                td['book'] = proc.stdout
+                updated = True
+        if updated:
+            with open(dock_plist, 'wb') as fp:
+                plistlib.dump(pl, fp)
+            subprocess.run(['killall', 'Dock'], timeout=3)
+except Exception:
+    pass
+"#)
+            .arg(&local_path)
+            .output();
+    }
+
     Ok(())
 }
 

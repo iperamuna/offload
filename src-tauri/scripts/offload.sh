@@ -108,6 +108,44 @@ fi
 mkdir -p "${DEST_BASE}" 2>/dev/null || true
 mkdir -p "${INTERNAL_EXCEPT_BASE}" 2>/dev/null || true
 
+refresh_dock_bookmark() {
+    local target_path="$1"
+    # If the modified folder is in ~/ (such as ~/Downloads, ~/Desktop, ~/Documents), refresh macOS Dock's bookmark
+    python3 -c "
+import plistlib, os, subprocess, sys
+
+target = sys.argv[1]
+try:
+    cmd = '''swift -e '
+import Foundation
+let path = NSString(string: \"''' + target + '''\").expandingTildeInPath
+let url = URL(fileURLWithPath: path)
+let b = try! url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+FileHandle.standardOutput.write(b)
+' '''
+    proc = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    if proc.returncode == 0 and len(proc.stdout) > 50:
+        dock_plist = os.path.expanduser('~/Library/Preferences/com.apple.dock.plist')
+        with open(dock_plist, 'rb') as fp:
+            pl = plistlib.load(fp)
+        updated = False
+        target_norm = os.path.normpath(os.path.expanduser(target))
+        for item in pl.get('persistent-others', []):
+            td = item.get('tile-data', {})
+            raw_url = td.get('file-data', {}).get('_CFURLString', '')
+            tile_path = raw_url.replace('file://', '')
+            if os.path.normpath(tile_path) == target_norm or td.get('file-label') == os.path.basename(target_norm):
+                td['book'] = proc.stdout
+                updated = True
+        if updated:
+            with open(dock_plist, 'wb') as fp:
+                plistlib.dump(pl, fp)
+            subprocess.run(['killall', 'Dock'], timeout=3)
+except Exception:
+    pass
+" "${target_path}" 2>/dev/null || true
+}
+
 # Helper to read user confirmation
 confirm_action() {
     local prompt="$1"
@@ -213,6 +251,8 @@ do_reverse() {
     chflags -R nouchg "${DEST_DIR}" 2>/dev/null || true
     find "${DEST_DIR}" -name ".DS_Store" -delete 2>/dev/null || true
     rm -rf "${DEST_DIR}" 2>/dev/null || true
+
+    refresh_dock_bookmark "${REAL_LINK_PATH}"
 
     echo ""
     echo -e "${BOLD}${GREEN}=== Reverse Complete! '${REAL_LINK_PATH}' is now back on internal SSD ===${NC}"
@@ -393,8 +433,10 @@ if [ ${#VALID_EXCEPTS[@]} -gt 0 ]; then
     done
 fi
 
+# Refresh Dock bookmark if target was in the user's home (e.g. ~/Downloads)
+refresh_dock_bookmark "${TARGET_DIR}"
+
 echo ""
-echo -e "${GREEN}[✓] Successfully offloaded:${NC}"
 echo "    ${TARGET_DIR} -> ${DEST_DIR}"
 
 if [ "$PWD" = "${TARGET_DIR}" ]; then

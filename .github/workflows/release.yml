@@ -51,6 +51,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Re-sign App Bundle with Stable Designated Requirement
+        run: |
+          for dmg in $(find src-tauri/target/${{ matrix.settings.target }}/release/bundle/dmg -name "*.dmg"); do
+            echo "Processing DMG: $dmg"
+            TEMP_DMG="${dmg}.temp.dmg"
+            MOUNT_DIR=$(mktemp -d)
+
+            hdiutil convert "$dmg" -format UDRW -o "$TEMP_DMG"
+            hdiutil attach "$TEMP_DMG" -mountpoint "$MOUNT_DIR" -nobrowse -noverify
+
+            for app in "$MOUNT_DIR"/*.app; do
+              if [ -d "$app" ]; then
+                echo "Applying stable designated requirement to: $app"
+                codesign -s - -f --deep -i "com.indunilperamuna.offload" -r='designated => identifier "com.indunilperamuna.offload"' "$app"
+                codesign -d -r- "$app"
+              fi
+            done
+
+            hdiutil detach "$MOUNT_DIR"
+            rm -rf "$MOUNT_DIR"
+            hdiutil convert "$TEMP_DMG" -format UDZO -imagekey zlib-level=9 -ov -o "$dmg"
+            rm -f "$TEMP_DMG"
+            echo "Successfully re-signed $dmg"
+          done
+
       - name: Prepare Artifacts & Generate Checksums
         run: |
           VERSION=${GITHUB_REF_NAME#v}
