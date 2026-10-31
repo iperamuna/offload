@@ -13,6 +13,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 pub struct WindowControlState {
     pub is_dialog_open: AtomicBool,
     pub is_pinned: AtomicBool,
+    pub is_dragging: AtomicBool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -687,6 +688,7 @@ pub fn run() {
     let window_ctrl = Arc::new(WindowControlState {
         is_dialog_open: AtomicBool::new(false),
         is_pinned: AtomicBool::new(true), // Default to pinned so popover stays open while user interacts with Finder!
+        is_dragging: AtomicBool::new(false),
     });
 
     tauri::Builder::default()
@@ -754,7 +756,7 @@ pub fn run() {
                     })
                     .build(app)?;
 
-                // Window Event Handling: Hide on blur (if unpinned and not in dialog) or close
+                // Window Event Handling: Hide on blur (if unpinned, not in dialog, and not dragging) or close
                 if let Some(window) = app.get_webview_window("main") {
                     let w = window.clone();
                     let ctrl = window_ctrl.clone();
@@ -764,9 +766,18 @@ pub fn run() {
                                 api.prevent_close();
                                 let _ = w.hide();
                             }
+                            tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Enter { .. })
+                            | tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Over { .. }) => {
+                                ctrl.is_dragging.store(true, Ordering::SeqCst);
+                            }
+                            tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { .. })
+                            | tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Leave) => {
+                                ctrl.is_dragging.store(false, Ordering::SeqCst);
+                            }
                             tauri::WindowEvent::Focused(false) => {
                                 if !ctrl.is_dialog_open.load(Ordering::SeqCst)
                                     && !ctrl.is_pinned.load(Ordering::SeqCst)
+                                    && !ctrl.is_dragging.load(Ordering::SeqCst)
                                 {
                                     let _ = w.hide();
                                 }

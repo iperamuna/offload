@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-10-31
+
+### Added
+- **Target Volume Symlink Audit**: Automatically scans target volume on refresh to discover offloaded directories and flags any missing symlinks on the current Mac with a 1-click **Link** button.
+- **Cancel Selection Option**: Direct Cancel action in the dropzone and action card to immediately clear selected folders and exception chips.
+- **Drag & Drop Focus State Handling**: Popover now preserves visibility while dragging items from Finder without requiring manual pinning.
+
+### Fixed
+- **macOS Folder ACL Permission Fix**: Strips `group:everyone deny delete` ACL flags to allow offloading protected user directories like `~/Downloads` without `Permission denied` errors.
+
+---
+
 ## [1.0.0] - 2026-10-31
 
 ### Initial Release 🎉

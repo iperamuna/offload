@@ -89,6 +89,21 @@ jobs:
       - name: List Artifacts
         run: ls -la release-artifacts/
 
+      - name: Resolve Release Notes File
+        id: release_notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+            VERSION="1.1.0"
+          fi
+          if [ -f "RELEASE_NOTES_v${VERSION}.md" ]; then
+            echo "path=RELEASE_NOTES_v${VERSION}.md" >> $GITHUB_OUTPUT
+          elif [ -f "RELEASE_NOTES.md" ]; then
+            echo "path=RELEASE_NOTES.md" >> $GITHUB_OUTPUT
+          else
+            echo "path=RELEASE_NOTES_v1.0.0.md" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create GitHub Draft Release
         uses: softprops/action-gh-release@v2
         with:
@@ -96,7 +111,7 @@ jobs:
             release-artifacts/*
           draft: true
           prerelease: false
-          body_path: RELEASE_NOTES_v1.0.0.md
+          body_path: ${{ steps.release_notes.outputs.path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

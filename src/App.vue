@@ -466,15 +466,28 @@
                     </div>
                   </div>
                 </div>
-                <button 
-                  @click.stop="resetSelectedFolder"
-                  class="text-[10px] px-2 py-0.5 rounded transition-colors shrink-0"
-                  :class="isDarkMode 
-                    ? 'text-zinc-400 hover:text-rose-400 bg-zinc-800 hover:bg-zinc-700' 
-                    : 'text-zinc-500 hover:text-rose-600 bg-zinc-200/70 hover:bg-zinc-200'"
-                >
-                  Change
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button 
+                    @click.stop="selectFolderDialog"
+                    title="Choose a different folder"
+                    class="text-[10px] px-2 py-0.5 rounded transition-colors font-medium"
+                    :class="isDarkMode 
+                      ? 'text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700' 
+                      : 'text-zinc-600 hover:text-zinc-900 bg-zinc-200/70 hover:bg-zinc-200'"
+                  >
+                    Change
+                  </button>
+                  <button 
+                    @click.stop="resetSelectedFolder"
+                    title="Clear selection"
+                    class="text-[10px] px-2 py-0.5 rounded transition-colors font-medium"
+                    :class="isDarkMode 
+                      ? 'text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20' 
+                      : 'text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100'"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -537,18 +550,30 @@
                 </button>
               </div>
 
-              <!-- Start Action Button -->
-              <button 
-                @click="startOffloadAction"
-                class="w-full mt-1 py-1.5 text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                :class="isDarkMode 
-                  ? 'bg-white hover:bg-zinc-200 text-zinc-950 shadow-white/5' 
-                  : 'bg-zinc-900 hover:bg-zinc-800 text-white'"
-              >
-                <Zap class="w-3.5 h-3.5 fill-current" />
-                <span v-if="!selectedExceptions.length">Offload Entire Folder to {{ currentVolumeName }}</span>
-                <span v-else>Offload to {{ currentVolumeName }} ({{ selectedExceptions.length }} kept on SSD)</span>
-              </button>
+              <!-- Start Action Button & Cancel Button -->
+              <div class="flex items-center gap-1.5 mt-1">
+                <button 
+                  @click="resetSelectedFolder"
+                  title="Cancel and clear selection"
+                  class="py-1.5 px-3 text-xs font-semibold rounded-lg border transition-all shrink-0"
+                  :class="isDarkMode 
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-white/10' 
+                    : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-300'"
+                >
+                  Cancel
+                </button>
+                <button 
+                  @click="startOffloadAction"
+                  class="flex-1 py-1.5 text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                  :class="isDarkMode 
+                    ? 'bg-white hover:bg-zinc-200 text-zinc-950 shadow-white/5' 
+                    : 'bg-zinc-900 hover:bg-zinc-800 text-white'"
+                >
+                  <Zap class="w-3.5 h-3.5 fill-current" />
+                  <span v-if="!selectedExceptions.length">Offload to {{ currentVolumeName }}</span>
+                  <span v-else>Offload ({{ selectedExceptions.length }} kept on SSD)</span>
+                </button>
+              </div>
             </div>
 
             <!-- Progress Card -->
