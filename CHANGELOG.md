@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-11-01
+
+### Performance & UX
+- **Instant Menu Bar Popover Launch**: Fixed cold-start blocking by decoupling heavy synchronous disk-usage calculations (`du -sh`) from popover initialization.
+- **Stale-While-Revalidate Size Caching**: Active symlink sizes are loaded instantly (<1ms) from an internal persistent cache (`~/.offload_sizes.json`), with continuous re-measurements handled transparently in a background thread.
+- **Startup Connection Loading Feedback**: Added a loading spinner indicator for seamless visual feedback while connecting to APFS volumes.
+
+---
+
 ## [1.2.0] - 2026-11-01
 
 ### Added

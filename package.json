@@ -1,7 +1,7 @@
 {
   "name": "offload-app",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Smart macOS drive space offloader and symlink manager",
   "author": "Indunil Peramuna <iperamuna@gmail.com> (https://github.com/iperamuna)",
