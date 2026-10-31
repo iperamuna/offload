@@ -436,7 +436,14 @@ fi
 # Refresh Dock bookmark if target was in the user's home (e.g. ~/Downloads)
 refresh_dock_bookmark "${TARGET_DIR}"
 
+# Industry Standard APFS Reclamation:
+# When heavy files are deleted on APFS, local Time Machine snapshots can lock the freed blocks.
+# Running tmutil thinlocalsnapshots asks macOS to purge retention on deleted blocks so internal space is immediately freed.
+echo -e "[*] Asking macOS APFS to reclaim purgeable snapshot blocks..."
+tmutil thinlocalsnapshots / 9999999999 4 2>/dev/null || true
+
 echo ""
+echo -e "${GREEN}[✓] Successfully offloaded:${NC}"
 echo "    ${TARGET_DIR} -> ${DEST_DIR}"
 
 if [ "$PWD" = "${TARGET_DIR}" ]; then

@@ -620,6 +620,15 @@ fn offload_folder(
         .map_err(|e| format!("Error waiting on process: {e}"))?;
 
     if output.status.success() {
+        // Industry Standard: Trigger APFS snapshot block thinning so reclaimed internal space
+        // is immediately reflected in macOS Finder and system stats rather than lingering as purgeable.
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("tmutil")
+                .args(["thinlocalsnapshots", "/", "9999999999", "4"])
+                .output();
+        }
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
@@ -649,6 +658,15 @@ fn reverse_folder(path: String) -> Result<String, String> {
         .map_err(|e| format!("Error waiting on process: {e}"))?;
 
     if output.status.success() {
+        // Industry Standard: Trigger APFS snapshot block thinning so reclaimed internal space
+        // is immediately reflected in macOS Finder and system stats rather than lingering as purgeable.
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("tmutil")
+                .args(["thinlocalsnapshots", "/", "9999999999", "4"])
+                .output();
+        }
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
