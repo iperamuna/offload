@@ -48,3 +48,4 @@ brew install --cask iperamuna/tap/offload
 ### 🔑 Security & Integrity Verification
 
 Every release is ad-hoc signed with a designated bundle requirement and verified with SHA-256 and MD5 checksums generated at build time.
+
