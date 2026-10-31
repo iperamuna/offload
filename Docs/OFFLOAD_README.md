@@ -59,7 +59,7 @@ Offload brings together a native menu bar popover application and an APFS-optimi
 * Runs silently in the background as an accessory: no icon in the macOS Dock, no window shadows cluttering Mission Control.
 * Clicking the menu bar tray icon reveals the popover directly anchored beneath the icon.
 * Features a chamfered top caret notch and a standard 14px macOS panel radius (`rounded-xl`).
-* Automatically hides when you click away (`WindowEvent::Focused(false)`).
+* **Window Pinning (📌) & Smart Blur**: Defaults to pinned to remain floating while switching to Finder and dragging folders. Can be toggled off to auto-dismiss on blur, or closed via the header **Close (✕)** button or tray icon. Native folder dialogs temporarily pause blur dismissal to prevent UI collapse.
 
 ### Solid Light & Dark Appearance System
 * **No AI Slop**: Free of harsh neon gradients, electric glows, and washed-out translucency.
@@ -86,11 +86,18 @@ Offload brings together a native menu bar popover application and an APFS-optimi
   * If both permissions are granted, the Permission Setup screen and header icon are **completely suppressed**.
   * If permission is missing, an amber pulsing shield appears with direct 1-click deep links to `System Settings → Privacy & Security → Full Disk Access`.
 
-### Drag & Drop and Optional Exceptions
-* Drag any folder from Finder directly into the Offload dropzone.
+### Drag & Drop, Folder Browsing & Universal Compatibility
+* **Works with ANY folder on your Mac**:
+  * **Any heavy personal or media folder**: Video projects (Final Cut, Premiere, DaVinci), photo libraries, Lightroom catalogs, audio sample libraries (Logic Pro Sound Library, Ableton, Kontakt), 3D assets (Blender), Downloads, Documents.
+  * **Development repositories**: Monorepos, `node_modules`, `vendor`, build caches, Gradle, Rust `target/`.
+  * **Virtual machines & containers**: Docker/OrbStack raw disks (`data.img.raw`), UTM, VirtualBox, Parallels images.
+  * **SDKs & Simulators**: Android Studio SDKs & AVDs, Xcode DerivedData & iOS Simulators.
+  * **Local AI models**: Ollama (`~/.ollama/models`), Hugging Face (`~/.cache/huggingface`), PyTorch checkpoints.
+  * **iOS/iPad backup archives**: Local device backups (`~/Library/Application Support/MobileSync/Backup`).
+* **Two ways to select**: Drag any folder directly from Finder into the dropzone (captured natively via Webview DragDrop events), or click the dropzone to open the native macOS folder browser.
 * Offloads the entire folder cleanly by default, reclaiming 100% of its disk space.
-* If you wish to keep specific files or directories on your fast internal SSD, select any item in the optional exceptions list or add custom names.
-* Click **Offload to [Drive]** to execute sparse-safe relocation and instant symlink creation.
+* If you wish to keep specific files or directories on your fast internal SSD, select any item in the optional exceptions list or add custom names (`--except`).
+* Click **Offload Entire Folder to [Drive]** to execute sparse-safe relocation and instant symlink creation with zero path breakage.
 
 ### Active Symlinks Manager
 * Indexes offloaded directories across your home and developer folders (`Herd`, `Development`, `Library/Android`, `Library/Group Containers`, `.ollama`, `MobileSync/Backup`).

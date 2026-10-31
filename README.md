@@ -16,14 +16,40 @@
 
 ## 🌟 Why Offload?
 
-Modern Macs with soldered 256GB or 512GB internal SSDs quickly run out of space due to:
-- Large development repositories (`node_modules`, `vendor`, build caches)
-- Docker / OrbStack raw disk images (`data.img.raw`)
-- Android Studio SDKs, system images, and Virtual Devices (AVDs)
-- Local AI model weights (Ollama, HuggingFace, PyTorch)
-- iOS and iPad backup images (`MobileSync/Backup`)
+Macs with internal SSDs (256GB, 512GB, 1TB) quickly run out of storage as files, caches, media, and development environments accumulate.
 
-**Offload** moves the physical weight of these directories to your external APFS drive (`DataDisc2` or any mounted volume) and creates transparent symbolic links in place, with optional support for preserving latency-sensitive files on your internal SSD using the **`--except`** engine.
+**Offload works with ANY folder on your Mac** — moving its physical weight to your external APFS drive (`DataDisc2` or any mounted volume) and leaving behind a transparent, high-speed macOS symbolic link.
+
+Your apps, command-line tools, IDEs, and system services continue accessing the files at their exact original locations with **zero path breakage**.
+
+### 📁 What Can You Offload? (Literally Any Folder!)
+
+- **Any Heavy Personal or Work Folder**:
+  - Video editing libraries & scratch disks (Final Cut Pro, Adobe Premiere Pro, DaVinci Resolve)
+  - Photo libraries, Lightroom catalogs, and RAW media archives
+  - Music production & audio sample libraries (Logic Pro Sound Library, Ableton Packs, Native Instruments, Kontakt)
+  - 3D assets, Blender caches, and design projects (Figma, Sketch)
+  - Heavy Downloads, Documents, personal archives, and game installs
+
+- **Developer & Code Repositories**:
+  - Monorepos and heavy projects (`node_modules`, `vendor`, build caches, Gradle, Rust `target/`)
+  - Package manager caches (Homebrew, npm, Yarn, pnpm, Composer, Cargo)
+
+- **Virtual Machines & Containers**:
+  - Docker & OrbStack raw disk images (`data.img.raw`)
+  - VirtualBox, UTM, and Parallels virtual machine images
+
+- **Mobile & Platform SDKs**:
+  - Android Studio SDKs, system images, and Android Virtual Devices (AVDs)
+  - Xcode DerivedData, iOS Simulators, and CoreSimulator devices
+
+- **Local AI & Machine Learning Models**:
+  - Model weights and checkpoints (Ollama `~/.ollama/models`, Hugging Face `~/.cache/huggingface`, PyTorch, llama.cpp, vLLM)
+
+- **Apple Device Backups**:
+  - Full local iPhone and iPad backup archives (`~/Library/Application Support/MobileSync/Backup`)
+
+Whether it's a 2GB code repository or a 350GB media archive, simply drag and drop **any folder** into Offload to reclaim that space on your internal SSD instantly. Optional manual exclusion (`--except`) allows keeping latency-sensitive files on your internal SSD if desired.
 
 ---
 
@@ -32,7 +58,7 @@ Modern Macs with soldered 256GB or 512GB internal SSDs quickly run out of space 
 - **🍏 Native macOS Menu Bar Popover**:
   - Resides entirely in the top menu bar (`LSUIElement = true`) with zero Dock presence.
   - Features a native chamfered caret notch pointing directly to the tray icon and crisp 14px macOS corner radius (`rounded-xl`).
-  - Auto-dismisses smoothly when clicking away (blur).
+  - **Window Pinning (📌)**: Stays open floating on top so you can freely switch to Finder and drag folders over. Can be unpinned to auto-dismiss on blur, or closed via the header **Close (✕)** button or tray icon.
 
 - **🎨 Bespoke Human-Crafted Appearance (Light & Dark)**:
   - **100% Solid Opaque Canvas**: No washed-out transparency or desktop wallpaper bleed-through.
