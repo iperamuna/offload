@@ -158,9 +158,26 @@
       </div>
 
       <!-- ============================================================= -->
+      <!-- VIEW: INITIAL LOADING SPINNER (Instant feedback on cold start) -->
+      <!-- ============================================================= -->
+      <div v-if="isAppInitializing" class="flex-1 flex flex-col items-center justify-center p-6 space-y-3">
+        <div class="relative w-10 h-10 flex items-center justify-center">
+          <div 
+            class="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+            :class="isDarkMode ? 'border-zinc-700 border-t-white' : 'border-zinc-300 border-t-zinc-900'"
+          ></div>
+          <HardDrive class="w-4 h-4 absolute" :class="isDarkMode ? 'text-zinc-400' : 'text-zinc-600'" />
+        </div>
+        <div class="text-center">
+          <p class="text-xs font-semibold" :class="isDarkMode ? 'text-zinc-200' : 'text-zinc-800'">Connecting to Storage...</p>
+          <p class="text-[10px] mt-0.5" :class="isDarkMode ? 'text-zinc-500' : 'text-zinc-400'">Reading APFS volumes and symlink maps</p>
+        </div>
+      </div>
+
+      <!-- ============================================================= -->
       <!-- VIEW: PERMISSION SETUP SCREEN (Only if permissions are missing) -->
       <!-- ============================================================= -->
-      <div v-if="activeView === 'permissions' && !permissions.all_granted" class="flex-1 flex flex-col p-3.5 justify-between overflow-y-auto">
+      <div v-else-if="activeView === 'permissions' && !permissions.all_granted" class="flex-1 flex flex-col p-3.5 justify-between overflow-y-auto">
         <div class="space-y-3">
           <div class="text-center py-1">
             <div 
@@ -942,6 +959,7 @@ async function hidePopover() {
 const activeView = ref('offload');
 const isRefreshing = ref(false);
 const isDriveConnected = ref(true);
+const isAppInitializing = ref(true);
 
 // Theme State ('system' | 'light' | 'dark')
 const themeChoice = ref(localStorage.getItem('offload_theme') || 'system');
@@ -1330,6 +1348,11 @@ onMounted(async () => {
   } else {
     activeView.value = 'offload';
   }
+
+  // Release initial spinner immediately so the UI is responsive right away
+  isAppInitializing.value = false;
+
+  // Background non-blocking parallel hydration
   refreshDiskStats();
   scanActiveSymlinks();
 });

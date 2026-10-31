@@ -1,14 +1,58 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 use tauri_plugin_dialog::{DialogExt, FilePath};
+
+static SIZE_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+fn get_cached_size(path: &str) -> String {
+    let mut lock = SIZE_CACHE.lock().unwrap();
+    if lock.is_none() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let cache_file = format!("{home}/.offload_sizes.json");
+        let initial: HashMap<String, String> = std::fs::read_to_string(&cache_file)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        *lock = Some(initial);
+    }
+    let map = lock.as_ref().unwrap();
+    map.get(path).cloned().unwrap_or_else(|| "~".to_string())
+}
+
+fn update_cache_in_background(paths: Vec<String>) {
+    std::thread::spawn(move || {
+        let mut computed = Vec::new();
+        for p in paths {
+            if let Ok(out) = Command::new("du").args(["-sh", &p]).output() {
+                let s = String::from_utf8_lossy(&out.stdout);
+                let sz = s.split_whitespace().next().unwrap_or("~").to_string();
+                computed.push((p, sz));
+            }
+        }
+        if !computed.is_empty() {
+            let mut lock = SIZE_CACHE.lock().unwrap();
+            if let Some(ref mut map) = *lock {
+                for (k, v) in &computed {
+                    map.insert(k.clone(), v.clone());
+                }
+                let home = std::env::var("HOME").unwrap_or_default();
+                let cache_file = format!("{home}/.offload_sizes.json");
+                if let Ok(json) = serde_json::to_string(map) {
+                    let _ = std::fs::write(cache_file, json);
+                }
+            }
+        }
+    });
+}
 
 pub struct WindowControlState {
     pub is_dialog_open: AtomicBool,
@@ -346,6 +390,8 @@ fn list_offloaded_items(
         format!("{home}/.orbstack"),
     ];
 
+    let mut paths_to_measure: Vec<String> = Vec::new();
+
     for parent in &candidate_parents {
         let p = Path::new(parent);
         if !p.exists() || p.is_symlink() {
@@ -370,15 +416,9 @@ fn list_offloaded_items(
                                 .map(|n| n.to_string_lossy().to_string())
                                 .unwrap_or_else(|| "Unknown".into());
 
-                            let size = if let Ok(du) = Command::new("du")
-                                .args(["-sh", &target_str])
-                                .output()
-                            {
-                                let s = String::from_utf8_lossy(&du.stdout);
-                                s.split_whitespace().next().unwrap_or("~").to_string()
-                            } else {
-                                "~".to_string()
-                            };
+                            // Instant response: Use cached size immediately
+                            let size = get_cached_size(&target_str);
+                            paths_to_measure.push(target_str.clone());
 
                             if let Ok(canonical) = std::fs::canonicalize(&abs_target) {
                                 mapped_targets.insert(canonical);
@@ -466,15 +506,8 @@ fn list_offloaded_items(
                 .unwrap_or_else(|| "Unknown".into());
 
             let dest_str = unlinked.to_string_lossy().to_string();
-            let size = if let Ok(du) = Command::new("du")
-                .args(["-sh", &dest_str])
-                .output()
-            {
-                let s = String::from_utf8_lossy(&du.stdout);
-                s.split_whitespace().next().unwrap_or("~").to_string()
-            } else {
-                "~".to_string()
-            };
+            let size = get_cached_size(&dest_str);
+            paths_to_measure.push(dest_str.clone());
 
             results.push(SymlinkItem {
                 name,
@@ -484,6 +517,10 @@ fn list_offloaded_items(
                 is_missing_symlink: true,
             });
         }
+    }
+
+    if !paths_to_measure.is_empty() {
+        update_cache_in_background(paths_to_measure);
     }
 
     Ok(results)
