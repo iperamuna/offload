@@ -56,8 +56,8 @@ brew install --cask iperamuna/tap/offload
 
 | Asset | Architecture | Target Hardware |
 | :--- | :--- | :--- |
-| **`Offload_1.0.0_aarch64.dmg`** | ARM64 | Apple Silicon Macs (M1, M2, M3, M4, Pro, Max, Ultra) |
-| **`Offload_1.0.0_x64.dmg`** | x86_64 | Intel Macs (Core i5, i7, i9, Xeon) |
+| **`Offload_1.0.0_Apple_Silicon.dmg`** | Apple Silicon (ARM64) | M1, M2, M3, M4, Pro, Max, Ultra |
+| **`Offload_1.0.0_Apple_Intel.dmg`** | Intel (x86_64) | Core i5, i7, i9, Xeon |
 
 *Corresponding `.md5` and `.sha256` checksum files are attached below for cryptographic verification.*
 
