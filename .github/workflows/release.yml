@@ -53,9 +53,13 @@ jobs:
 
       - name: Prepare Artifacts & Generate Checksums
         run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+            VERSION="1.0.0"
+          fi
           mkdir -p artifacts
           for dmg in $(find src-tauri/target/${{ matrix.settings.target }}/release/bundle/dmg -name "*.dmg"); do
-            DMG_NAME="Offload_1.0.0_${{ matrix.settings.label }}.dmg"
+            DMG_NAME="Offload_${VERSION}_${{ matrix.settings.label }}.dmg"
             cp "$dmg" "artifacts/$DMG_NAME"
             md5 -q "artifacts/$DMG_NAME" > "artifacts/${DMG_NAME}.md5"
             shasum -a 256 "artifacts/$DMG_NAME" > "artifacts/${DMG_NAME}.sha256"
@@ -95,3 +99,57 @@ jobs:
           body_path: RELEASE_NOTES_v1.0.0.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew Tap Formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || secrets.GH_PAT || '' }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+            VERSION="1.0.0"
+          fi
+
+          ARM_SHA=$(awk '{print $1}' release-artifacts/Offload_*_Apple_Silicon.dmg.sha256 | head -n 1)
+          INTEL_SHA=$(awk '{print $1}' release-artifacts/Offload_*_Apple_Intel.dmg.sha256 | head -n 1)
+
+          echo "Target Version:    ${VERSION}"
+          echo "Apple Silicon SHA: ${ARM_SHA}"
+          echo "Apple Intel SHA:   ${INTEL_SHA}"
+
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::notice ::HOMEBREW_TAP_TOKEN secret is not set. Skipping automated Homebrew Tap update."
+            exit 0
+          fi
+
+          echo "Cloning iperamuna/homebrew-tap..."
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/iperamuna/homebrew-tap.git" tap-repo
+          cd tap-repo
+
+          python3 -c "
+          import re, os
+
+          v = '$VERSION'
+          arm = '$ARM_SHA'
+          intel = '$INTEL_SHA'
+
+          with open('Casks/offload.rb', 'r') as f:
+              content = f.read()
+
+          content = re.sub(r'version\s+\"[^\"]*\"', f'version \"{v}\"', content)
+          content = re.sub(r'sha256\s+arm:\s+\"[^\"]*\",\s*\n\s*intel:\s+\"[^\"]*\"', f'sha256 arm:   \"{arm}\",\n         intel: \"{intel}\"', content)
+
+          with open('Casks/offload.rb', 'w') as f:
+              f.write(content)
+          "
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/offload.rb
+
+          if git diff --staged --quiet; then
+            echo "Casks/offload.rb is already up to date."
+          else
+            git commit -m "chore(cask): update offload to v${VERSION}"
+            git push origin main
+            echo "Successfully updated Homebrew tap for Offload v${VERSION}!"
+          fi
