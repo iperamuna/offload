@@ -86,9 +86,10 @@ Offload brings together a native menu bar popover application and an APFS-optimi
   * If both permissions are granted, the Permission Setup screen and header icon are **completely suppressed**.
   * If permission is missing, an amber pulsing shield appears with direct 1-click deep links to `System Settings → Privacy & Security → Full Disk Access`.
 
-### Drag & Drop and Automatic Exceptions
+### Drag & Drop and Optional Exceptions
 * Drag any folder from Finder directly into the Offload dropzone.
-* Offload scans the folder disk footprint and pre-selects recommended keep-on-SSD items (`node_modules`, `.env`, `.git`, `vendor`, `target`, `build`, `dist`, `storage`).
+* Offloads the entire folder cleanly by default, reclaiming 100% of its disk space.
+* If you wish to keep specific files or directories on your fast internal SSD, select any item in the optional exceptions list or add custom names.
 * Click **Offload to [Drive]** to execute sparse-safe relocation and instant symlink creation.
 
 ### Active Symlinks Manager

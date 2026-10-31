@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Drag & Drop Folder Inspector**:
   - Instant calculation of folder disk usage.
   - Automatic detection and recommendation of exception candidates (`node_modules`, `.env`, `.git`, `vendor`, `storage/logs`).
-- **Hybrid Storage Engine (`--except`)**:
-  - Move large assets to external APFS drives while retaining high-frequency, latency-sensitive files on internal SSD.
+- **Full Directory Offload with Optional Stashing (`--except`)**:
+  - Reclaims 100% of folder space by offloading entire directory cleanly by default.
+  - Provides optional manual exclusion for files/folders to remain on the internal SSD when desired.
   - Automated bidirectional symlink resolution.
 - **Active Symlinks Manager**:
   - Automatically indexes existing offloaded directories.

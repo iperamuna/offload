@@ -12,19 +12,29 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x64
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust stable with Universal targets
+      - name: Install Rust stable (${{ matrix.settings.target }})
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
+          targets: ${{ matrix.settings.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          key: ${{ matrix.settings.target }}
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -34,39 +44,52 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build Universal macOS Application (Apple Silicon + Intel)
-        run: bun run tauri build --target universal-apple-darwin
+      - name: Build Tauri Application (${{ matrix.settings.arch }})
+        run: bun run tauri build --target ${{ matrix.settings.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare Release Artifacts & Generate MD5/SHA256 Checksums
-        id: artifacts
+      - name: Prepare Artifacts & Generate Checksums
         run: |
           mkdir -p artifacts
-          
-          # Copy Universal or Architecture-specific DMG bundles
-          for dmg in $(find src-tauri/target -name "*.dmg"); do
+          for dmg in $(find src-tauri/target/${{ matrix.settings.target }}/release/bundle/dmg -name "*.dmg"); do
             DMG_NAME=$(basename "$dmg")
             cp "$dmg" "artifacts/$DMG_NAME"
-            
-            # Generate MD5 checksum
             md5 -q "artifacts/$DMG_NAME" > "artifacts/${DMG_NAME}.md5"
-            echo "MD5 for ${DMG_NAME}: $(cat artifacts/${DMG_NAME}.md5)"
-            
-            # Generate SHA256 checksum (for Homebrew and verification)
             shasum -a 256 "artifacts/$DMG_NAME" > "artifacts/${DMG_NAME}.sha256"
-            echo "SHA256 for ${DMG_NAME}: $(cat artifacts/${DMG_NAME}.sha256)"
+            echo "Checksums generated for $DMG_NAME"
           done
-
           ls -la artifacts/
 
-      - name: Create or Update GitHub Release & Upload Assets
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.settings.arch }}
+          path: artifacts/*
+
+  publish-release:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: List Artifacts
+        run: ls -la release-artifacts/
+
+      - name: Create GitHub Draft Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/*
-          draft: false
+            release-artifacts/*
+          draft: true
           prerelease: false
-          generate_release_notes: true
+          body_path: RELEASE_NOTES_v1.0.0.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -23,7 +23,7 @@ Modern Macs with soldered 256GB or 512GB internal SSDs quickly run out of space 
 - Local AI model weights (Ollama, HuggingFace, PyTorch)
 - iOS and iPad backup images (`MobileSync/Backup`)
 
-**Offload** moves the physical weight of these directories to your external APFS drive (`DataDisc2` or any mounted volume), creates transparent symbolic links in place, and preserves latency-sensitive files (`node_modules`, `.env`) on your internal SSD using the **`--except`** hybrid engine.
+**Offload** moves the physical weight of these directories to your external APFS drive (`DataDisc2` or any mounted volume) and creates transparent symbolic links in place, with optional support for preserving latency-sensitive files on your internal SSD using the **`--except`** engine.
 
 ---
 
@@ -48,10 +48,10 @@ Modern Macs with soldered 256GB or 512GB internal SSDs quickly run out of space 
   - Customize the **Folder Inside Selected Volume** (default: `Indunilperamuna-Macos` or any custom folder).
   - Live full resolved path preview (`/Volumes/DataDisc2/Indunilperamuna-Macos/`) with direct Finder reveal.
 
-- **⚡ Hybrid Internal SSD Stashing (`--except`)**:
-  - Automatically identifies performance-critical files like `node_modules`, `.env`, `.git`, `vendor`, and `storage/logs`.
-  - Leaves those files on the internal SSD while moving the gigabytes of remaining assets to the external disk.
-  - Seamlessly links them back together into one unified tree.
+- **⚡ Full Directory Offload with Optional Stashing (`--except`)**:
+  - Offloads the entire folder cleanly to the external drive by default, reclaiming 100% of its disk space.
+  - Provides optional manual exclusion (`--except`) for keeping specific files or folders (e.g. `.env`, caches) on the internal SSD if desired.
+  - Seamlessly resolves all paths through transparent macOS APFS symbolic links.
 
 - **🔄 1-Click Reverse Restore**:
   - Revert any offloaded project back to a standard local folder on your internal SSD with automatic re-integration of stashed files.

@@ -453,7 +453,7 @@
               </div>
             </div>
 
-            <!-- Exception Chips Panel (Keep on Internal SSD) -->
+            <!-- Optional Exception Chips Panel (Keep on Internal SSD) -->
             <div 
               v-if="selectedFolder && !isProcessing" 
               class="border rounded-lg p-2.5 space-y-2 transition-colors"
@@ -462,9 +462,15 @@
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" :class="isDarkMode ? 'text-zinc-300' : 'text-zinc-700'">
                   <ShieldCheck class="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Keep on Internal SSD (<code class="font-mono">--except</code>)</span>
+                  <span>Optional SSD Stashing (<code class="font-mono">--except</code>)</span>
                 </div>
+                <span class="text-[9px] font-mono opacity-60">
+                  {{ selectedExceptions.length ? `${selectedExceptions.length} kept on SSD` : 'Full folder offload' }}
+                </span>
               </div>
+              <p class="text-[10px] leading-tight" :class="isDarkMode ? 'text-zinc-400' : 'text-zinc-500'">
+                Offloads 100% of this folder by default. Select any items below only if you wish to keep them on internal SSD.
+              </p>
 
               <!-- Chips list -->
               <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-0.5">
@@ -489,7 +495,7 @@
                   v-model="customExceptionInput" 
                   @keydown.enter.prevent="addCustomException"
                   type="text" 
-                  placeholder="Add exception (.env, cache)..." 
+                  placeholder="Add custom exception (.env, cache)..." 
                   class="flex-1 rounded-md px-2 py-1 text-[10px] font-mono min-w-0 border focus:outline-none transition-colors"
                   :class="isDarkMode 
                     ? 'bg-zinc-950 border-white/[0.08] text-zinc-100 placeholder-zinc-500 focus:border-zinc-500' 
@@ -515,7 +521,8 @@
                   : 'bg-zinc-900 hover:bg-zinc-800 text-white'"
               >
                 <Zap class="w-3.5 h-3.5 fill-current" />
-                <span>Offload to {{ currentVolumeName }}</span>
+                <span v-if="!selectedExceptions.length">Offload Entire Folder to {{ currentVolumeName }}</span>
+                <span v-else>Offload to {{ currentVolumeName }} ({{ selectedExceptions.length }} kept on SSD)</span>
               </button>
             </div>
 
@@ -1049,10 +1056,8 @@ async function handleFolderSelection(path) {
     if (res) {
       folderSize.value = res.size;
       detectedSubitems.value = res.items || [];
-      // Auto-select recommended exceptions (.env, node_modules, .git, etc.)
-      selectedExceptions.value = res.items
-        .filter(i => i.is_recommended)
-        .map(i => i.name);
+      // Full folder offload by default (exceptions are purely optional manual selections)
+      selectedExceptions.value = [];
     }
   } catch (err) {
     folderSize.value = 'Unknown';
