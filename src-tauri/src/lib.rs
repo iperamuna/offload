@@ -58,6 +58,7 @@ pub struct SymlinkItem {
     pub path: String,
     pub destination: String,
     pub size: String,
+    pub is_missing_symlink: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -291,32 +292,77 @@ fn scan_folder(path: String) -> Result<FolderScanResult, String> {
     })
 }
 
-// 6. List Active Symlinks pointing to DataDisc2 or external
+// Helper to guess original local path for an offloaded target folder
+fn guess_local_path(target_path: &Path, dest_base: &Path, home: &str) -> String {
+    let rel = match target_path.strip_prefix(dest_base) {
+        Ok(r) => r.to_string_lossy().to_string(),
+        Err(_) => target_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+    };
+
+    if rel.starts_with("OrbStackData/") {
+        format!("{home}/Library/Group Containers/HUAQ24HBR6.dev.orbstack/{}", &rel["OrbStackData/".len()..])
+    } else if rel.starts_with("Android/sdk") {
+        format!("{home}/Library/{rel}")
+    } else if rel.starts_with("Android/avd") {
+        format!("{home}/.android/{}", &rel["Android/".len()..])
+    } else if rel.starts_with("MobileSync/") {
+        format!("{home}/Library/Application Support/{rel}")
+    } else if rel.starts_with("ollama/") {
+        format!("{home}/.ollama/{}", &rel["ollama/".len()..])
+    } else if rel.starts_with("ApplicationSupport/") {
+        format!("{home}/Library/Application Support/{}", &rel["ApplicationSupport/".len()..])
+    } else if rel.starts_with("private/") {
+        format!("/{}", rel)
+    } else {
+        format!("{home}/{rel}")
+    }
+}
+
+// 6. List Active Symlinks and detect any missing symlinks on target volume
 #[tauri::command]
-fn list_offloaded_items(target_mount: Option<String>) -> Result<Vec<SymlinkItem>, String> {
+fn list_offloaded_items(
+    target_mount: Option<String>,
+    subfolder: Option<String>,
+) -> Result<Vec<SymlinkItem>, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/indunilperamuna".into());
-    let filter = target_mount.unwrap_or_else(|| "/Volumes/".into());
-    let mut results = Vec::new();
+    let filter = target_mount.clone().unwrap_or_else(|| "/Volumes/".into());
+    let mut results: Vec<SymlinkItem> = Vec::new();
+    let mut mapped_targets: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
 
     let candidate_parents = vec![
+        home.clone(),
         format!("{home}/Herd"),
         format!("{home}/Development"),
         format!("{home}/Htdocs"),
+        format!("{home}/Projects"),
         format!("{home}/.android"),
         format!("{home}/Library/Android"),
         format!("{home}/Library/Application Support"),
+        format!("{home}/Library/Application Support/MobileSync"),
         format!("{home}/Library/Group Containers"),
+        format!("{home}/Library/Group Containers/HUAQ24HBR6.dev.orbstack"),
         format!("{home}/.ollama"),
+        format!("{home}/.orbstack"),
     ];
 
-    for parent in candidate_parents {
-        let p = Path::new(&parent);
+    for parent in &candidate_parents {
+        let p = Path::new(parent);
+        if !p.exists() || p.is_symlink() {
+            continue;
+        }
+
         if let Ok(entries) = std::fs::read_dir(p) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_symlink() {
                     if let Ok(target) = std::fs::read_link(&path) {
-                        let target_str = target.to_string_lossy().to_string();
+                        let abs_target = if target.is_relative() {
+                            p.join(&target)
+                        } else {
+                            target
+                        };
+
+                        let target_str = abs_target.to_string_lossy().to_string();
                         if target_str.contains(&filter) || target_str.starts_with("/Volumes/") {
                             let name = path
                                 .file_name()
@@ -333,11 +379,18 @@ fn list_offloaded_items(target_mount: Option<String>) -> Result<Vec<SymlinkItem>
                                 "~".to_string()
                             };
 
+                            if let Ok(canonical) = std::fs::canonicalize(&abs_target) {
+                                mapped_targets.insert(canonical);
+                            } else {
+                                mapped_targets.insert(abs_target.clone());
+                            }
+
                             results.push(SymlinkItem {
                                 name,
                                 path: path.to_string_lossy().to_string(),
                                 destination: target_str,
                                 size,
+                                is_missing_symlink: false,
                             });
                         }
                     }
@@ -346,7 +399,118 @@ fn list_offloaded_items(target_mount: Option<String>) -> Result<Vec<SymlinkItem>
         }
     }
 
+    // Now inspect target volume/subfolder for any unlinked offloaded directories
+    let dest_base = match &subfolder {
+        Some(sub) if !sub.trim().is_empty() => std::path::PathBuf::from(&filter).join(sub.trim()),
+        _ => std::path::PathBuf::from(&filter),
+    };
+
+    if dest_base.exists() && dest_base.is_dir() {
+        let mut unlinked_dirs: Vec<std::path::PathBuf> = Vec::new();
+
+        fn check_dest_dir(
+            dir: &Path,
+            mapped: &std::collections::HashSet<std::path::PathBuf>,
+            unlinked: &mut Vec<std::path::PathBuf>,
+        ) {
+            let canonical = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+            if mapped.contains(&canonical) {
+                return;
+            }
+
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                let subdirs: Vec<std::path::PathBuf> = entries
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| {
+                        p.is_dir()
+                            && !p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .starts_with('.')
+                    })
+                    .collect();
+
+                if subdirs.is_empty() {
+                    unlinked.push(dir.to_path_buf());
+                } else {
+                    for sub in subdirs {
+                        check_dest_dir(&sub, mapped, unlinked);
+                    }
+                }
+            }
+        }
+
+        if let Ok(entries) = std::fs::read_dir(&dest_base) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir()
+                    && !path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .starts_with('.')
+                {
+                    check_dest_dir(&path, &mapped_targets, &mut unlinked_dirs);
+                }
+            }
+        }
+
+        for unlinked in unlinked_dirs {
+            let guessed = guess_local_path(&unlinked, &dest_base, &home);
+            let name = unlinked
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "Unknown".into());
+
+            let dest_str = unlinked.to_string_lossy().to_string();
+            let size = if let Ok(du) = Command::new("du")
+                .args(["-sh", &dest_str])
+                .output()
+            {
+                let s = String::from_utf8_lossy(&du.stdout);
+                s.split_whitespace().next().unwrap_or("~").to_string()
+            } else {
+                "~".to_string()
+            };
+
+            results.push(SymlinkItem {
+                name,
+                path: guessed,
+                destination: dest_str,
+                size,
+                is_missing_symlink: true,
+            });
+        }
+    }
+
     Ok(results)
+}
+
+// 7. Relink a missing symlink to destination
+#[tauri::command]
+fn relink_symlink(local_path: String, destination: String) -> Result<(), String> {
+    let dest_p = Path::new(&destination);
+    if !dest_p.exists() {
+        return Err(format!("Target directory does not exist on disk: {destination}"));
+    }
+
+    let local_p = Path::new(&local_path);
+    if local_p.is_symlink() || local_p.exists() {
+        return Err(format!("A file or symlink already exists at: {local_path}"));
+    }
+
+    if let Some(parent) = local_p.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent folder: {e}"))?;
+    }
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dest_p, local_p)
+        .map_err(|e| format!("Failed to create symbolic link: {e}"))?;
+
+    Ok(())
 }
 
 fn get_or_install_offload_script() -> Result<String, String> {
@@ -622,6 +786,7 @@ pub fn run() {
             list_mounted_volumes,
             scan_folder,
             list_offloaded_items,
+            relink_symlink,
             offload_folder,
             reverse_folder,
             open_in_finder,

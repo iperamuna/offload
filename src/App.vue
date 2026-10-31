@@ -580,29 +580,54 @@
           <div v-else-if="activeView === 'active'" class="space-y-1.5">
             <div 
               v-for="item in activeSymlinks" 
-              :key="item.path"
+              :key="item.destination"
               class="border rounded-lg p-2 flex items-center justify-between gap-2 transition-colors"
-              :class="isDarkMode ? 'bg-zinc-900/40 border-white/[0.06] hover:border-zinc-700' : 'bg-white border-zinc-200/80 hover:border-zinc-300 shadow-xs'"
+              :class="item.is_missing_symlink
+                ? (isDarkMode ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-500/50' : 'bg-amber-50/70 border-amber-300 hover:border-amber-400')
+                : (isDarkMode ? 'bg-zinc-900/40 border-white/[0.06] hover:border-zinc-700' : 'bg-white border-zinc-200/80 hover:border-zinc-300 shadow-xs')"
             >
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
                   <span class="text-xs font-bold truncate" :class="isDarkMode ? 'text-zinc-100' : 'text-zinc-900'">{{ item.name }}</span>
                   <span 
                     class="text-[9px] px-1.5 py-0.2 rounded-full font-mono font-semibold shrink-0"
-                    :class="isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'"
+                    :class="item.is_missing_symlink
+                      ? (isDarkMode ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-100 text-amber-800 border border-amber-200')
+                      : (isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')"
                   >
                     {{ item.size }}
                   </span>
+                  <span 
+                    v-if="item.is_missing_symlink"
+                    class="text-[9px] px-1.5 py-0.2 rounded-full font-sans font-bold shrink-0 bg-amber-500 text-zinc-950 flex items-center gap-1"
+                  >
+                    <AlertCircle class="w-2.5 h-2.5 stroke-[2.5]" />
+                    Missing Link
+                  </span>
                 </div>
-                <div class="text-[9px] font-mono truncate mt-0.5" :class="isDarkMode ? 'text-zinc-400' : 'text-zinc-500'">
-                  {{ item.path }}
+                <div class="text-[9px] font-mono truncate mt-0.5" :class="isDarkMode ? 'text-zinc-400' : 'text-zinc-500'" :title="item.is_missing_symlink ? `Target on disk: ${item.destination}` : item.path">
+                  <span v-if="item.is_missing_symlink" class="text-amber-500 font-semibold">Expected: </span>{{ item.path }}
                 </div>
               </div>
 
               <div class="flex items-center gap-1 shrink-0">
+                <!-- Re-link button for unlinked folders -->
                 <button 
-                  @click="openInFinder(item.path)"
-                  title="Reveal in Finder"
+                  v-if="item.is_missing_symlink"
+                  @click="relinkSymlinkAction(item)"
+                  title="Re-establish symlink on this Mac"
+                  class="px-2 py-1 rounded-md transition-colors border text-[10px] font-semibold flex items-center gap-1"
+                  :class="isDarkMode 
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30' 
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'"
+                >
+                  <Link2 class="w-3 h-3" />
+                  <span>Link</span>
+                </button>
+
+                <button 
+                  @click="openInFinder(item.destination || item.path)"
+                  :title="item.is_missing_symlink ? 'Reveal Target Folder on Drive' : 'Reveal in Finder'"
                   class="p-1 rounded-md transition-colors border"
                   :class="isDarkMode 
                     ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-white/5' 
@@ -611,6 +636,7 @@
                   <ExternalLink class="w-3 h-3" />
                 </button>
                 <button 
+                  v-if="!item.is_missing_symlink"
                   @click="reverseItemAction(item.path)"
                   title="Restore to internal SSD"
                   class="p-1 rounded-md transition-colors border"
@@ -855,6 +881,8 @@ import {
   RotateCcw,
   Pin,
   PinOff,
+  Link2,
+  AlertCircle,
   X
 } from 'lucide-vue-next';
 import { invoke } from '@tauri-apps/api/core';
@@ -958,6 +986,7 @@ function saveSubfolderSetting() {
     mirrorSubfolder.value = 'Indunilperamuna-Macos';
   }
   localStorage.setItem('offload_mirror_subfolder', mirrorSubfolder.value.trim());
+  scanActiveSymlinks();
 }
 
 // Selected folder state
@@ -1037,6 +1066,9 @@ async function refreshDiskStats() {
       diskStats.value = stats;
       isDriveConnected.value = stats.external_connected ?? true;
     }
+
+    // Refresh symlinks and detect unlinked targets
+    await scanActiveSymlinks();
   } catch (err) {
     console.warn('Stats fetch warning:', err);
   } finally {
@@ -1047,6 +1079,7 @@ async function refreshDiskStats() {
 function onVolumeChange() {
   localStorage.setItem('offload_target_volume', targetVolumePath.value);
   refreshDiskStats();
+  scanActiveSymlinks();
   checkSystemPermissions();
 }
 
@@ -1191,12 +1224,30 @@ async function openInFinder(path) {
 
 async function scanActiveSymlinks() {
   try {
-    const list = await invoke('list_offloaded_items', { targetMount: targetVolumePath.value });
-    if (list && list.length) {
+    const list = await invoke('list_offloaded_items', { 
+      targetMount: targetVolumePath.value,
+      subfolder: mirrorSubfolder.value
+    });
+    if (list) {
       activeSymlinks.value = list;
     }
   } catch (err) {
     console.warn(err);
+  }
+}
+
+async function relinkSymlinkAction(item) {
+  if (!confirm(`Create symbolic link from:\n${item.path}\npointing to:\n${item.destination}?`)) return;
+
+  try {
+    await invoke('relink_symlink', {
+      localPath: item.path,
+      destination: item.destination
+    });
+    await scanActiveSymlinks();
+    await refreshDiskStats();
+  } catch (err) {
+    alert(`Failed to create symlink: ${err}`);
   }
 }
 
