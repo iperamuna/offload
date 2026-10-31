@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-11-01
+
+### Added
+- **Automatic APFS Snapshot Block Reclamation**: Integrated `tmutil thinlocalsnapshots` directly into both the GUI app and CLI engine. Offload automatically requests macOS to thin and reclaim purgeable snapshot blocks holding deleted files hostage, immediately recovering free physical disk space on the internal SSD.
+- **Dock Security-Scoped Bookmark Sync**: Automatically regenerates macOS Dock alias bookmarks when offloading or relinking directories in the user's home (e.g. `~/Downloads`, `~/Desktop`), preserving the native folder icon and stack click behavior.
+
+### Fixed
+- **Full Disk Access (FDA) Permission Retention**: Pinned the macOS codesign designated requirement to `identifier "com.indunilperamuna.offload"`, permanently preventing macOS TCC from resetting or revoking Full Disk Access permissions across Homebrew and DMG updates.
+- **Dynamic Header Version Badge**: Updated the popover badge to query and display the active version via Tauri's runtime `getVersion()` API.
+
+---
+
 ## [1.1.0] - 2026-10-31
 
 ### Added
